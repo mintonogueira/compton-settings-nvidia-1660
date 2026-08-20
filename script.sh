@@ -63,6 +63,29 @@ have()
     command -v "$1" >/dev/null 2>&1
 }
 
+# Lista PIDs de processos cujo nome de comando é exatamente 'picom'.
+# Implementado apenas com ps + awk para evitar depender de pgrep/pkill e manter
+# o corpo do script dentro de utilitários e sintaxe tradicionais de POSIX.
+picom_pids()
+{
+    ps -e -o pid= -o comm= 2>/dev/null | awk '$2 == "picom" { print $1 }'
+}
+
+picom_running()
+{
+    [ -n "$(picom_pids)" ]
+}
+
+stop_picom()
+{
+    PIDS=$(picom_pids)
+    if [ -n "$PIDS" ]; then
+        for PID in $PIDS; do
+            kill "$PID" >/dev/null 2>&1 || true
+        done
+    fi
+}
+
 # ------------------------------------------------------------------------------
 # 1. Validações iniciais
 # ------------------------------------------------------------------------------
@@ -112,6 +135,7 @@ sudo pacman -S --needed picom xfconf
 
 have picom || fail 'picom não ficou disponível após a instalação.'
 have xfconf-query || fail 'xfconf-query não ficou disponível após a instalação.'
+have xfwm4 || fail 'xfwm4 não foi encontrado. Este instalador exige uma sessão XFCE/xfwm4.'
 
 # ------------------------------------------------------------------------------
 # 3. Diagnóstico informativo da NVIDIA
@@ -299,14 +323,14 @@ chmod 600 "$AUTOSTART_FILE"
 
 say '[8/9] Reiniciando o Picom para validar a configuração...'
 # Encerra somente instâncias anteriores do Picom; não mexe em outros processos.
-pkill -x picom >/dev/null 2>&1 || true
+stop_picom
 sleep 1
 
 # A opção --daemon permite testar a configuração ainda nesta sessão.
 picom --config "$PICOM_CONF" --log-level=WARN --daemon
 sleep 2
 
-if pgrep -x picom >/dev/null 2>&1; then
+if picom_running; then
     say '      Picom iniciado com sucesso.'
 else
     warn 'o Picom não permaneceu em execução.'
